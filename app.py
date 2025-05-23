@@ -2,17 +2,35 @@ import streamlit as st
 import numpy as np
 import cv2
 from PIL import Image
-import tensorflow as tf
-from tensorflow.keras.models import load_model
 import os
 import requests
 from io import BytesIO
 import matplotlib.pyplot as plt
 
+# Try to import TensorFlow, handle if not available
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import load_model
+    TF_AVAILABLE = True
+except ImportError:
+    TF_AVAILABLE = False
+    st.error("TensorFlow not available. Some features may not work.")
+
 # Import custom modules
-from utils.image_processing import preprocess_image, load_and_preprocess_image
-from models.model_utils import load_models, predict_with_model
-from config.config import CLASS_LABELS, MODEL_URLS, IMG_SIZE
+try:
+    from utils.image_processing import preprocess_image, load_and_preprocess_image
+    from models.model_utils import load_models, predict_with_model
+    from config.config import CLASS_LABELS, MODEL_URLS, IMG_SIZE
+except ImportError as e:
+    st.error(f"Error importing custom modules: {e}")
+    # Define basic fallbacks
+    CLASS_LABELS = {
+        0: 'Safe driving', 1: 'Texting - right', 2: 'Talking on the phone - right',
+        3: 'Texting - left', 4: 'Talking on the phone - left', 5: 'Operating the radio',
+        6: 'Drinking', 7: 'Reaching behind', 8: 'Hair and makeup', 9: 'Talking to passenger'
+    }
+    MODEL_URLS = {}
+    IMG_SIZE = (224, 224)
 
 # Page configuration
 st.set_page_config(
@@ -119,31 +137,42 @@ def detection_page():
             st.subheader("Prediction Results")
             
             try:
-                # Load model based on selection
-                model = load_models(model_choice.lower().replace(" ", "_"))
-                
-                if model is not None:
-                    # Make prediction - here are the functions that need to be implemented
-                    prediction, confidence = predict_with_model(image, model, model_choice)
+                if TF_AVAILABLE:
+                    # Load model based on selection
+                    model = load_models(model_choice.lower().replace(" ", "_"))
                     
-                    # Display results
-                    predicted_class = CLASS_LABELS[prediction]
+                    if model is not None:
+                        # Make prediction
+                        prediction, confidence = predict_with_model(image, model, model_choice)
+                        
+                        # Display results
+                        predicted_class = CLASS_LABELS[prediction]
+                        
+                        # Color coding based on safety
+                        if prediction == 0:  # Safe driving
+                            st.markdown(f'<div class="prediction-box"><h3>✅ Prediction: {predicted_class}</h3><p>Confidence: {confidence:.2%}</p></div>', unsafe_allow_html=True)
+                        elif prediction in [1, 2, 3, 4]:  # Phone related
+                            st.markdown(f'<div class="danger-box"><h3>🚨 Prediction: {predicted_class}</h3><p>Confidence: {confidence:.2%}</p></div>', unsafe_allow_html=True)
+                        else:  # Other distractions
+                            st.markdown(f'<div class="warning-box"><h3>⚠️ Prediction: {predicted_class}</h3><p>Confidence: {confidence:.2%}</p></div>', unsafe_allow_html=True)
+                        
+                        # Show confidence scores for all classes
+                        with st.expander("View all class probabilities"):
+                            st.info("Full prediction probabilities would be displayed here")
                     
-                    # Color coding based on safety
-                    if prediction == 0:  # Safe driving
-                        st.markdown(f'<div class="prediction-box"><h3>✅ Prediction: {predicted_class}</h3><p>Confidence: {confidence:.2%}</p></div>', unsafe_allow_html=True)
-                    elif prediction in [1, 2, 3, 4]:  # Phone related
-                        st.markdown(f'<div class="danger-box"><h3>🚨 Prediction: {predicted_class}</h3><p>Confidence: {confidence:.2%}</p></div>', unsafe_allow_html=True)
-                    else:  # Other distractions
-                        st.markdown(f'<div class="warning-box"><h3>⚠️ Prediction: {predicted_class}</h3><p>Confidence: {confidence:.2%}</p></div>', unsafe_allow_html=True)
-                    
-                    # Show confidence scores for all classes
-                    with st.expander("View all class probabilities"):
-                        # This would show the full prediction array
-                        st.info("Full prediction probabilities would be displayed here")
-                
+                    else:
+                        st.error("Failed to load the selected model. Please try again.")
                 else:
-                    st.error("Failed to load the selected model. Please try again.")
+                    st.error("TensorFlow is not available. Cannot make predictions.")
+                    st.info("This is a demo showing the UI. In a full deployment, you would need to install TensorFlow and provide model files.")
+                    
+                    # Show demo prediction
+                    demo_prediction = np.random.randint(0, 10)
+                    demo_confidence = np.random.uniform(0.6, 0.95)
+                    predicted_class = CLASS_LABELS[demo_prediction]
+                    
+                    st.markdown(f'<div class="prediction-box"><h3>🎯 Demo Prediction: {predicted_class}</h3><p>Demo Confidence: {demo_confidence:.2%}</p></div>', unsafe_allow_html=True)
+                    st.warning("This is a random demo prediction since TensorFlow is not available.")
                     
             except Exception as e:
                 st.error(f"An error occurred during prediction: {str(e)}")
